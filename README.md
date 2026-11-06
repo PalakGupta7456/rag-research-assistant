@@ -22,6 +22,17 @@ Ask a question and get an answer **assembled from, and cited to,** the newest ar
 | **Train/serve consistency** | The index is built with `sentence-transformers` in Python and queried with Transformers.js in the browser. A CI job embeds the same sentences in both and fails if cosine agreement drops below 0.97. |
 | **Cost and privacy** | The optional LLM step uses the visitor's own Anthropic key, which is sent directly from the browser to Anthropic and kept only in that tab. Nothing passes through a server of ours. |
 
+## Results (real arXiv corpus, first build: 600 papers, 300 queries)
+
+| Retriever | Hit@1 | MRR@10 |
+|---|---|---|
+| Dense (MiniLM) | 0.947 | 0.961 |
+| BM25 (keyword) | 0.953 | 0.968 |
+| Hybrid (RRF) | 0.960 | 0.972 |
+| **Hybrid + cross-encoder re-rank** | **0.980** | **0.987** |
+
+Each stage adds to the one before. Hybrid search beats either retriever alone, and re-ranking the top 30 with a cross-encoder removes about half of the remaining misses. The corpus grows daily to 4,000 papers, and the table on the live page updates with it.
+
 ## Evaluation protocol
 
 There are no hand labels, so it uses **title → abstract known-item retrieval**. Each paper's title is the query, and its abstract (with the title removed) is the single relevant document. A title is a short paraphrase of its abstract, so this tests whether a retriever can find a specific paper from a rewording. The live page shows the current numbers.
