@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Paper Trail — ask recent ML research</title>
+  <meta name="description" content="A retrieval-augmented assistant over the latest arXiv machine-learning papers. Hybrid search runs in your browser; every answer cites its sources.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="#">Paper Trail</a>
+    <p class="meta" id="meta">Loading the index…</p>
+    <nav><a href="#bench">Evaluation</a><a href="#how">How it works</a><a href="https://github.com/PalakGupta7456/rag-research-assistant">GitHub</a></nav>
+  </header>
+
+  <main>
+    <section class="ask">
+      <h1>Ask the newest machine-learning papers.</h1>
+      <p class="lede" id="lede">Every answer is assembled from the papers it cites.</p>
+      <form id="form" role="search">
+        <label for="q" class="visually-hidden">Your question</label>
+        <input id="q" type="search" autocomplete="off" placeholder="How are people reducing hallucination in retrieval-augmented generation?">
+        <button type="submit">Ask</button>
+      </form>
+      <div class="controls">
+        <fieldset class="modes" aria-label="Retrieval method">
+          <label><input type="radio" name="mode" value="hybrid" checked> Hybrid</label>
+          <label><input type="radio" name="mode" value="dense"> Semantic</label>
+          <label><input type="radio" name="mode" value="bm25"> Keyword</label>
+        </fieldset>
+        <span class="model-status" id="model-status">Semantic model loading in your browser…</span>
+      </div>
+      <div class="examples" id="examples"></div>
+    </section>
+
+    <section class="results" id="results" hidden>
+      <div class="answer-col">
+        <article class="answer" id="answer" aria-live="polite"></article>
+        <details class="llm" id="llm">
+          <summary>Have Claude write the answer from these sources</summary>
+          <p class="small">Uses your own Anthropic API key. It goes straight from your browser to Anthropic and is kept only in this tab.</p>
+          <div class="llm-row">
+            <label class="visually-hidden" for="key">Anthropic API key</label>
+            <input id="key" type="password" placeholder="sk-ant-…" autocomplete="off">
+            <label class="visually-hidden" for="model">Model</label>
+            <input id="model" type="text" value="claude-sonnet-5-5" aria-label="Model">
+            <button type="button" id="gen">Write answer</button>
+          </div>
+          <div id="llm-out" aria-live="polite"></div>
+        </details>
+      </div>
+      <ol class="sources" id="sources"></ol>
+    </section>
+
+    <section class="bench" id="bench">
+      <h2>Does hybrid search actually help?</h2>
+      <p class="sub">Benchmark rebuilt with every index refresh. Each paper's <em>title</em> is the query and its <em>abstract</em> (title removed) is the one right answer, so a retriever has to find a paper from a paraphrase.</p>
+      <table class="btable" id="btable"><thead><tr><th>Retriever</th><th>Hit@1</th><th>Hit@5</th><th>Hit@10</th><th>MRR@10</th><th>ms / query</th></tr></thead><tbody></tbody></table>
+      <p class="small" id="bnote"></p>
+    </section>
+
+    <section class="how" id="how">
+      <h2>How it works</h2>
+      <div class="how-grid">
+        <div>
+          <h3>Every day, in GitHub Actions</h3>
+          <ol>
+            <li>Fetch the newest papers in cs.LG, cs.CL, cs.AI, cs.CV, cs.IR and stat.ML from the arXiv API, keeping a rolling corpus.</li>
+            <li>Embed title and abstract with all-MiniLM-L6-v2 (384 dimensions).</li>
+            <li>Quantise vectors to int8. The index is about 4× smaller, with cosine error under 0.06.</li>
+            <li>Benchmark BM25, dense, hybrid and cross-encoder re-ranking, then publish the index to this page.</li>
+          </ol>
+        </div>
+        <div>
+          <h3>When you ask, in your browser</h3>
+          <ol>
+            <li>BM25 keyword scores over the corpus.</li>
+            <li>Your question is embedded by the same model running in WebAssembly through Transformers.js.</li>
+            <li>The two rankings are merged with Reciprocal Rank Fusion.</li>
+            <li>The sentences closest to your question are pulled from the top papers and cited. Claude can optionally write a fuller answer, restricted to those sources.</li>
+          </ol>
+        </div>
+      </div>
+      <p class="small">The Python package adds a FastAPI service (<code>/search</code>, <code>/ask</code>) in Docker with a cross-encoder re-ranker and server-side Claude answers.</p>
+    </section>
+  </main>
+  <footer>Paper metadata and abstracts from arXiv (arxiv.org). Thank you to arXiv for use of its open access interoperability.</footer>
+  <script type="module" src="assets/app.js"></script>
+</body>
+</html>

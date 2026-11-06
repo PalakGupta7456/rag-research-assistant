@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/palakgupta7456/rag-research-assistant
+
+jobs:
+  test:
+    name: Lint and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[api,dev]"
+      - run: ruff check .
+      - run: pytest -v
+      - run: node --check docs/assets/app.js || (cp docs/assets/app.js /tmp/app.mjs && node --check /tmp/app.mjs)
+
+  browser-parity:
+    name: Python ↔ browser embedding parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[ml]"
+          npm install --no-save @huggingface/transformers@3.0.2
+      - name: Embed the same sentences in Python and in Transformers.js
+        run: |
+          python - <<'PY'
+          import json
+          from rag.models import STEncoder
+          s = ["Retrieval-augmented generation reduces hallucination.", "Diffusion models for video synthesis.",
+               "A conformal prediction method with coverage guarantees.", "How do agents use tools?"]
+          json.dump({"sentences": s, "vectors": STEncoder().encode(s).tolist()}, open("parity.json", "w"))
+          PY
+          node scripts/browser_parity.mjs parity.json
+
+  docker:
+    name: Build, smoke test and push image
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Bring in the published corpus
+        run: |
+          if git fetch --depth 1 origin live-data 2>/dev/null; then
+            git show FETCH_HEAD:data/papers.parquet > data/papers.parquet
+            git show FETCH_HEAD:data/papers.npy > data/papers.npy
+          fi
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test
+        if: hashFiles('data/papers.parquet') != ''
+        run: |
+          docker run -d -p 8000:8000 ${{ env.IMAGE }}:${{ github.sha }}
+          for i in $(seq 1 60); do curl -fs localhost:8000/health && break; sleep 3; done
+          curl -fs -X POST localhost:8000/ask -H 'content-type: application/json' \
+            -d '{"question":"How can retrieval reduce hallucination in language models?"}' | tee out.json
+          grep -q '"citation_precision":1.0' out.json
+      - name: Push
+        if: github.event_name != 'pull_request'
+        run: |
+          docker tag ${{ env.IMAGE }}:${{ github.sha }} ${{ env.IMAGE }}:latest
+          docker push ${{ env.IMAGE }}:${{ github.sha }} && docker push ${{ env.IMAGE }}:latest

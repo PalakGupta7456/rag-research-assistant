@@ -1,0 +1,58 @@
+name: Daily index build
+
+on:
+  schedule:
+    - cron: "37 5 * * *"   # once a day, after arXiv's daily announcement
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: index-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ hashFiles('src/rag/config.py') }}
+      - run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[ml]"
+      - name: Restore corpus
+        run: |
+          if git fetch --depth 1 origin live-data; then git archive FETCH_HEAD | tar -x -C .; fi
+      - name: Fetch papers, embed, evaluate, publish index
+        run: python -m rag.build
+      - name: Save corpus to live-data branch
+        run: |
+          STATE=$(mktemp -d)
+          mkdir -p "$STATE/data"
+          cp data/papers.parquet data/papers.npy "$STATE/data/"
+          cd "$STATE"
+          git init -q -b live-data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Corpus $(date -u +%F)"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" live-data
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deploy
+        uses: actions/deploy-pages@v4
