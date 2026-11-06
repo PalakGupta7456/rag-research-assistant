@@ -8,7 +8,7 @@
 
 Ask a question and get an answer **assembled from, and cited to,** the newest arXiv papers in machine learning, NLP, computer vision and IR. The corpus refreshes daily. Retrieval is **hybrid**: BM25, plus dense embeddings, fused with Reciprocal Rank Fusion. It runs **inside your browser** with Transformers.js, so the live demo needs no server at all.
 
-![App](docs/screenshot.png)
+![App](docs/screenshot.jpg)
 
 ## Why it is built this way
 
